@@ -22,7 +22,7 @@ EXT 		 ?= .exe
 PROG_NAME = $(BIN_PATH)\$(PROJECT_NAME)$(EXT)
 
 CFLAGS = -Wall -Wextra -Wpedantic -std=c99 -Wno-missing-braces 
-LDLIBS = -lraylib -lopengl32 -lgdi32 -lwinmm
+LDLIBS = -lraylib -lbox2d -lopengl32 -lgdi32 -lwinmm
 
 .PHONY: all clean
 
