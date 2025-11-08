@@ -1,150 +1,124 @@
-/*******************************************************************************************
-*
-*   raylib [core] example - Basic window
-*
-*   Welcome to raylib!
-*
-*   To test examples, just press F6 and execute 'raylib_compile_execute' script
-*   Note that compiled executable is placed in the same folder as .c file
-*
-*   To test the examples on Web, press F6 and execute 'raylib_compile_execute_web' script
-*   Web version of the program is generated in the same folder as .c file
-*
-*   You can find all basic examples on C:\raylib\raylib\examples folder or
-*   raylib official webpage: www.raylib.com
-*
-*   Enjoy using raylib. :)
-*
-*   Example originally created with raylib 1.0, last time updated with raylib 1.0
-*
-*   Example licensed under an unmodified zlib/libpng license, which is an OSI-certified,
-*   BSD-like license that allows static linking with closed source software
-*
-*   Copyright (c) 2013-2024 Ramon Santamaria (@raysan5)
-*
-********************************************************************************************/
-
 #include "raylib.h"
-
 #include "box2d.h"
-#include "collision.h"
 #include "math_functions.h"
 
 #include <stdio.h>
-
-
-//------------------------------------------------------------------------------------
-// Defines and Macros
-//------------------------------------------------------------------------------------
-#define FPS 60
-#define BODY_MASS 1.0f
-#define SCREEN_WIDTH 800
-#define SCREEN_HEIGHT 800
+//--------------------------------------------------------------------------------
+// Macro Definitions
+//--------------------------------------------------------------------------------
 #define PPM 10.0f
 #define MPP (1.0f / PPM)
+#define BALL_COUNT 60
+#define SCREEN_WIDTH 800
+#define SCREEN_HEIGHT 800
 
-//------------------------------------------------------------------------------------
-// Global Variables Declarations
-//------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------
+// Global Variables
+//--------------------------------------------------------------------------------
 float timestep = 1.0f / 60.0f;
 int subStepCount = 4;
 
-//------------------------------------------------------------------------------------
-// Prototype Functions Declaration
-//------------------------------------------------------------------------------------
+//--------------------------------------------------------------------------------
+// Helper Function Definitions
+//--------------------------------------------------------------------------------
 
-//------------------------------------------------------------------------------------
-// Program main entry point
-//------------------------------------------------------------------------------------
-int main(void)
-{
-    b2Vec2 groundScale = (b2Vec2){(200.0f*MPP)/2.0f, (200.0f*MPP)/2.0f};
-    b2Vec2 crateScale = (b2Vec2){(10.0f*MPP)/2.0f, (10.0f*MPP)/2.0f};
+//Converts pixel vector coordinates to meters vector coordinates using the predefined PPM [pixel per meter] constant 
+b2Vec2 pixelToMeterV(b2Vec2 pixel){
+    return b2MulSV(MPP, pixel);
+}
 
-    //Creating a Box2D world [ The world manages all physics, memory, objects and simulations. ]
+//Converts vector coordinates in meters to pixel vector coordinates using the predefined MPP [meter per pixel] constant 
+b2Vec2 meterToPixelV(b2Vec2 meter){
+    return b2MulSV(PPM, meter);
+}
+
+//Converts pixel scaler quantity to meter unit using the defined constant PPM
+float pixelToMeterS(float pixel){
+    return pixel * MPP;
+}
+
+//Converts meter scaler quantity to pixel unit using the defined constant MPP
+float meterToPixelS(float meter){
+    return meter * PPM;
+}
+
+//Convert Box2D vect2 to raylib's Vector2 representation
+Vector2 b2ToVec2(b2Vec2 vector){return (Vector2){vector.x, vector.y};}
+
+int main(void){
+    // Physics World Creation for simulation
     b2WorldDef worldDef = b2DefaultWorldDef();
     worldDef.gravity = (b2Vec2){0.0f, 10.0f};
     b2WorldId worldId = b2CreateWorld(&worldDef);
 
-    b2BodyDef groundBody = b2DefaultBodyDef();
-    groundBody.position = (b2Vec2){400.0f*MPP, 400.0f*MPP};
-    groundBody.rotation = b2MakeRot(B2_PI / 4.5f); 
-    b2BodyId groundId = b2CreateBody(worldId, &groundBody);
+    //Creating a ball body, geometry and shape
+    b2BodyDef ballBodyDef = b2DefaultBodyDef();
+    ballBodyDef.type = b2_dynamicBody;
 
-    b2Polygon groundBox = b2MakeBox(groundScale.x, groundScale.y);
-    b2ShapeDef groundShapeDef = b2DefaultShapeDef();
-    b2CreatePolygonShape(groundId, &groundShapeDef, &groundBox);
+    b2Circle ballGeometry = {.center=(b2Vec2){0.0f, 0.0f}, .radius=pixelToMeterS(5.0f)};
+    b2ShapeDef ballShapeDef = b2DefaultShapeDef();
+    ballShapeDef.material.friction = 0.3f;
 
-    //Create a Rigid Dynamic Body that represents our crate
-    b2BodyDef crateBodyDef = b2DefaultBodyDef();
-    crateBodyDef.type = b2_dynamicBody;
-    crateBodyDef.isEnabled = false;
-    crateBodyDef.position = (b2Vec2){400.0f*MPP, (-crateScale.y*2.0f)};
 
-    //Create a Box Geometry and Shape for our crate body
-    b2Polygon crateBox = b2MakeBox(crateScale.x, crateScale.y);
-    b2ShapeDef crateBoxShapeDef = b2DefaultShapeDef();
-    crateBoxShapeDef.density = 1;
-    crateBoxShapeDef.material.friction = 0.3f;
+    //Creating a Circular 'glass' container's body, geometry and shape
+    b2BodyDef containerBodyDef = b2DefaultBodyDef();
+    containerBodyDef.position = pixelToMeterV((b2Vec2){SCREEN_WIDTH/2.0f, SCREEN_HEIGHT/2.0f});
+    b2BodyId containerBodyId = b2CreateBody(worldId, &containerBodyDef);
 
-    b2BodyId crateIds[10] = {0};
-    for(int i = 0; i < 10; i++){
-        crateIds[i] = b2CreateBody(worldId, &crateBodyDef);
-        b2CreatePolygonShape(crateIds[i], &crateBoxShapeDef, &crateBox);
+    float rad = pixelToMeterS(200.0f)+0.2f;
+    float res = 0.01f;
+    const int size = 2.0f / res;
+
+    b2Vec2 points[size];
+    for(int i = 0; i < size; i++){
+        float angle = 1 - i*res;
+        float x = rad*cosf(B2_PI*angle);
+        float y = rad*sinf(B2_PI*angle);
+        points[i] = (b2Vec2){x, y};
     }
 
-    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Raylib + Box2D Test");
+    b2ChainDef containerShapeDef = b2DefaultChainDef();
+    containerShapeDef.points = points;
+    containerShapeDef.isLoop = true;
+    containerShapeDef.count = size;
+    b2ChainId containerId = b2CreateChain(containerBodyId, &containerShapeDef);
 
-    SetTargetFPS(FPS);
 
-    b2Vec2 groundPos = b2MulSV(PPM, b2Body_GetPosition(groundId));
-    Rectangle ground = (Rectangle){groundPos.x, groundPos.y, groundScale.x*2.0f*PPM, groundScale.y*2.0f*PPM};
-    float groundRotation = b2Rot_GetAngle(b2Body_GetRotation(groundId)) * (180.0f/B2_PI);
+    //Populating the World with 60 ball objects
+    b2BodyId ballIds[BALL_COUNT] = {0};
+
+    for(int x = 0; x < 5; x++){
+        for(int y = 0; y < 12; y++){
+            float yp = pixelToMeterS(SCREEN_HEIGHT / 16.0f) + (ballGeometry.radius * y * 2.0f);
+            float xp = pixelToMeterS(SCREEN_WIDTH / 2.05f) + (ballGeometry.radius * x * 2.0f);
+            int index = (y*5) + x;
+            ballBodyDef.position = (b2Vec2){xp, yp};
+            ballIds[index] = b2CreateBody(worldId, &ballBodyDef);
+            b2CreateCircleShape(ballIds[index], &ballShapeDef, &ballGeometry);
+        }
+    }
+
+    // b2Vec2 bp = b2Body_GetPosition(ballIds[0]);
+    // printf("p:[%.4f, %.4f]\n", bp.x, bp.y);
+
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Lottery Simulator v.1.0.0");
+
+    SetTargetFPS(60);
     
-    int crateIndex = 0;
-    bool firstIteration = true;
-    int deletionCount = 0;
-
     while(!WindowShouldClose()){
 
-        if(crateIndex >= 10){
-            crateIndex = 0;
-            firstIteration = false;
-        }
-
-        b2Vec2 cratePos = b2MulSV(PPM,b2Body_GetPosition(crateIds[crateIndex]));
-        Rectangle crate = (Rectangle){cratePos.x, cratePos.y, crateScale.x*2.0f*PPM, crateScale.y*2.0f*PPM};
-        float crateRotation = b2Rot_GetAngle(b2Body_GetRotation(crateIds[crateIndex])) * (180.0f/B2_PI);
-        
-        if(!b2Body_IsEnabled(crateIds[crateIndex]))
-        {
-            b2Body_Enable(crateIds[crateIndex]);
-        }
-
-        if(cratePos.x > (SCREEN_WIDTH+(crateScale.x*PPM)) || cratePos.x < -(crateScale.x*PPM) || cratePos.y > (SCREEN_HEIGHT+(crateScale.y*PPM))){
-            b2Body_Disable(crateIds[crateIndex]);
-            if(crateIndex >= 5){
-                b2DestroyBody(crateIds[crateIndex-5]);
-                crateIds[crateIndex-5] = b2CreateBody(worldId, &crateBodyDef);
-                b2CreatePolygonShape(crateIds[crateIndex-5], &crateBoxShapeDef, &crateBox);
-                deletionCount += 1;
-            }else if(!firstIteration){
-                b2DestroyBody(crateIds[5+crateIndex]);
-                crateIds[5+crateIndex] = b2CreateBody(worldId, &crateBodyDef);
-                b2CreatePolygonShape(crateIds[5+crateIndex], &crateBoxShapeDef, &crateBox);
-                deletionCount += 1;
-            }
-            crateIndex += 1;
-        }
-
         BeginDrawing();
-
             ClearBackground(RAYWHITE);
 
-            DrawText(TextFormat("p_del: %d vs p_ren: %d", deletionCount, crateIndex), 400, 10, 20, ORANGE);
-            
-            DrawRectanglePro(crate, (Vector2){crateScale.x*PPM, crateScale.y*PPM}, crateRotation, GREEN);
-            DrawRectanglePro(ground, (Vector2){groundScale.x*PPM, groundScale.y*PPM}, groundRotation, MAROON);
+            for(int i = 0; i < BALL_COUNT; i++){
+                b2Vec2 bp = b2Body_GetPosition(ballIds[i]);
+                DrawCircleLinesV(b2ToVec2(meterToPixelV(bp)), meterToPixelS(ballGeometry.radius), MAROON);
+            }
+
+            for(int i = 0; i < size; i++){
+                b2Vec2 pos = b2Add(meterToPixelV(points[i]), (b2Vec2){SCREEN_WIDTH/2.0f, SCREEN_HEIGHT/2.0f});
+                DrawCircleV(b2ToVec2(pos), 1.0f, ORANGE);
+            }
 
             b2World_Step(worldId, timestep, subStepCount);
         EndDrawing();
@@ -153,5 +127,5 @@ int main(void)
     CloseWindow();
     b2DestroyWorld(worldId);
     worldId = b2_nullWorldId;
-    return 0;
+    return 0; 
 }
