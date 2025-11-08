@@ -75,16 +75,23 @@ int main(void)
     b2ShapeDef groundShapeDef = b2DefaultShapeDef();
     b2CreatePolygonShape(groundId, &groundShapeDef, &groundBox);
 
-    b2BodyDef crateBody = b2DefaultBodyDef();
-    crateBody.type = b2_dynamicBody;
-    crateBody.position = (b2Vec2){400.0f*MPP, 10.0f*MPP};
-    b2BodyId crateBodyId = b2CreateBody(worldId, &crateBody);
+    //Create a Rigid Dynamic Body that represents our crate
+    b2BodyDef crateBodyDef = b2DefaultBodyDef();
+    crateBodyDef.type = b2_dynamicBody;
+    crateBodyDef.isEnabled = false;
+    crateBodyDef.position = (b2Vec2){400.0f*MPP, (-crateScale.y*2.0f)};
 
+    //Create a Box Geometry and Shape for our crate body
     b2Polygon crateBox = b2MakeBox(crateScale.x, crateScale.y);
     b2ShapeDef crateBoxShapeDef = b2DefaultShapeDef();
     crateBoxShapeDef.density = 1;
     crateBoxShapeDef.material.friction = 0.3f;
-    b2CreatePolygonShape(crateBodyId, &crateBoxShapeDef, &crateBox);
+
+    b2BodyId crateIds[10] = {0};
+    for(int i = 0; i < 10; i++){
+        crateIds[i] = b2CreateBody(worldId, &crateBodyDef);
+        b2CreatePolygonShape(crateIds[i], &crateBoxShapeDef, &crateBox);
+    }
 
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Raylib + Box2D Test");
 
@@ -94,23 +101,47 @@ int main(void)
     Rectangle ground = (Rectangle){groundPos.x, groundPos.y, groundScale.x*2.0f*PPM, groundScale.y*2.0f*PPM};
     float groundRotation = b2Rot_GetAngle(b2Body_GetRotation(groundId)) * (180.0f/B2_PI);
     
-    b2MassData m_crate = b2Body_GetMassData(crateBodyId);
-    printf("Crate mass: %.4f\n", m_crate.rotationalInertia);
+    int crateIndex = 0;
+    bool firstIteration = true;
+    int deletionCount = 0;
 
     while(!WindowShouldClose()){
 
-        b2Vec2 cratePos = b2MulSV(PPM,b2Body_GetPosition(crateBodyId));
+        if(crateIndex >= 10){
+            crateIndex = 0;
+            firstIteration = false;
+        }
+
+        b2Vec2 cratePos = b2MulSV(PPM,b2Body_GetPosition(crateIds[crateIndex]));
         Rectangle crate = (Rectangle){cratePos.x, cratePos.y, crateScale.x*2.0f*PPM, crateScale.y*2.0f*PPM};
-        float crateRotation = b2Rot_GetAngle(b2Body_GetRotation(crateBodyId)) * (180.0f/B2_PI);
+        float crateRotation = b2Rot_GetAngle(b2Body_GetRotation(crateIds[crateIndex])) * (180.0f/B2_PI);
+        
+        if(!b2Body_IsEnabled(crateIds[crateIndex]))
+        {
+            b2Body_Enable(crateIds[crateIndex]);
+        }
+
+        if(cratePos.x > (SCREEN_WIDTH+(crateScale.x*PPM)) || cratePos.x < -(crateScale.x*PPM) || cratePos.y > (SCREEN_HEIGHT+(crateScale.y*PPM))){
+            b2Body_Disable(crateIds[crateIndex]);
+            if(crateIndex >= 5){
+                b2DestroyBody(crateIds[crateIndex-5]);
+                crateIds[crateIndex-5] = b2CreateBody(worldId, &crateBodyDef);
+                b2CreatePolygonShape(crateIds[crateIndex-5], &crateBoxShapeDef, &crateBox);
+                deletionCount += 1;
+            }else if(!firstIteration){
+                b2DestroyBody(crateIds[5+crateIndex]);
+                crateIds[5+crateIndex] = b2CreateBody(worldId, &crateBodyDef);
+                b2CreatePolygonShape(crateIds[5+crateIndex], &crateBoxShapeDef, &crateBox);
+                deletionCount += 1;
+            }
+            crateIndex += 1;
+        }
 
         BeginDrawing();
 
             ClearBackground(RAYWHITE);
 
-            
-
-            DrawText(TextFormat("pb:[%.4f, %.4f], rot: %.4f", cratePos.x, cratePos.y, crateRotation), 400, 10, 20, ORANGE);
-            // DrawText(TextFormat("pg:[%.4f, %.4f]", groundPos.x, groundPos.y), 600, 10, 20, ORANGE);
+            DrawText(TextFormat("p_del: %d vs p_ren: %d", deletionCount, crateIndex), 400, 10, 20, ORANGE);
             
             DrawRectanglePro(crate, (Vector2){crateScale.x*PPM, crateScale.y*PPM}, crateRotation, GREEN);
             DrawRectanglePro(ground, (Vector2){groundScale.x*PPM, groundScale.y*PPM}, groundRotation, MAROON);
