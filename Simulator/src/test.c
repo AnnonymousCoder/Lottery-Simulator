@@ -45,87 +45,106 @@ float meterToPixelS(float meter){
 //Convert Box2D vect2 to raylib's Vector2 representation
 Vector2 b2ToVec2(b2Vec2 vector){return (Vector2){vector.x, vector.y};}
 
+
+//--------------------------------------------------------------------------------
+// Function Prototypes
+//--------------------------------------------------------------------------------
+
+
+
 int main(void){
-    // Physics World Creation for simulation
+    //-----------World Creation----------------------
     b2WorldDef worldDef = b2DefaultWorldDef();
     worldDef.gravity = (b2Vec2){0.0f, 10.0f};
     b2WorldId worldId = b2CreateWorld(&worldDef);
 
-    //Creating a ball body, geometry and shape
+    //-----------Ball Creation----------------------
     b2BodyDef ballBodyDef = b2DefaultBodyDef();
     ballBodyDef.type = b2_dynamicBody;
 
-    b2Circle ballGeometry = {.center=(b2Vec2){0.0f, 0.0f}, .radius=pixelToMeterS(5.0f)};
-    b2ShapeDef ballShapeDef = b2DefaultShapeDef();
-    ballShapeDef.material.friction = 0.3f;
+    b2Circle ballGeometry = {.center = pixelToMeterV((b2Vec2){0.0f, 0.0f}), .radius = pixelToMeterS(5.0f)};
+    b2ShapeDef  ballShapeDef = b2DefaultShapeDef();
+    ballShapeDef.material.friction = 0.5f;
 
-
-    //Creating a Circular 'glass' container's body, geometry and shape
-    b2BodyDef containerBodyDef = b2DefaultBodyDef();
-    containerBodyDef.position = pixelToMeterV((b2Vec2){SCREEN_WIDTH/2.0f, SCREEN_HEIGHT/2.0f});
-    b2BodyId containerBodyId = b2CreateBody(worldId, &containerBodyDef);
-
-    float rad = pixelToMeterS(200.0f)+0.2f;
-    float res = 0.01f;
-    const int size = 2.0f / res;
-
-    b2Vec2 points[size];
-    for(int i = 0; i < size; i++){
-        float angle = 1 - i*res;
-        float x = rad*cosf(B2_PI*angle);
-        float y = rad*sinf(B2_PI*angle);
-        points[i] = (b2Vec2){x, y};
-    }
-
-    b2ChainDef containerShapeDef = b2DefaultChainDef();
-    containerShapeDef.points = points;
-    containerShapeDef.isLoop = true;
-    containerShapeDef.count = size;
-    b2ChainId containerId = b2CreateChain(containerBodyId, &containerShapeDef);
-
-
-    //Populating the World with 60 ball objects
     b2BodyId ballIds[BALL_COUNT] = {0};
-
-    for(int x = 0; x < 5; x++){
-        for(int y = 0; y < 12; y++){
-            float yp = pixelToMeterS(SCREEN_HEIGHT / 16.0f) + (ballGeometry.radius * y * 2.0f);
-            float xp = pixelToMeterS(SCREEN_WIDTH / 2.05f) + (ballGeometry.radius * x * 2.0f);
-            int index = (y*5) + x;
+    int w = 5;
+    int h = BALL_COUNT / w;
+    for(int x = 0; x < w; x++){
+        for(int y = 0; y < h; y++){
+            float yp = pixelToMeterS(SCREEN_HEIGHT / 16.055f) + (ballGeometry.radius * y * 2.0f);
+            float xp = pixelToMeterS(SCREEN_WIDTH / 2.055f) + (ballGeometry.radius * x * 2.0f);
             ballBodyDef.position = (b2Vec2){xp, yp};
+            int index = (y*w) + x;
             ballIds[index] = b2CreateBody(worldId, &ballBodyDef);
             b2CreateCircleShape(ballIds[index], &ballShapeDef, &ballGeometry);
         }
     }
 
-    // b2Vec2 bp = b2Body_GetPosition(ballIds[0]);
-    // printf("p:[%.4f, %.4f]\n", bp.x, bp.y);
+    //-----------Tumblr Creation----------------------
+    b2BodyDef tmblrBodyDef = b2DefaultBodyDef();
+    tmblrBodyDef.position = pixelToMeterV((b2Vec2){SCREEN_WIDTH/2.0f, SCREEN_HEIGHT/2.0f});
+    tmblrBodyDef.rotation = b2MakeRot(B2_PI/4.0f);
+    b2BodyId tmblrId = b2CreateBody(worldId, &tmblrBodyDef);
 
-    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Lottery Simulator v.1.0.0");
+    b2Polygon tmblrGeometry = {0};
+    b2ShapeDef tmblrShapeDef = b2DefaultShapeDef();
 
+    float cmpntHalfWidth = pixelToMeterS(20.0f)/2.0f;
+    float cmpntHalfHeight = pixelToMeterS(10.0f)/2.0f;
+    float radius = pixelToMeterS(100.0f);
+    float resolution = 0.1f;
+    int size = 2.0f / resolution;
+
+    for(int i = 0; i < size; i++){
+        float angle = 1 - (i * resolution);
+        b2Vec2 pos = (b2Vec2){radius*cosf(B2_PI*angle), radius*sinf(B2_PI*angle)};
+        b2Vec2 delta_p = b2Sub(tmblrBodyDef.position, pos);
+        float rot =atan2f(delta_p.y, delta_p.x) + (B2_PI/2.0f);
+
+        tmblrGeometry = b2MakeOffsetBox(cmpntHalfWidth, cmpntHalfHeight, pos, b2MakeRot(rot));
+        tmblrShapeDef.density = 1.0f;
+        tmblrShapeDef.material.friction = 0.3f;
+        b2CreatePolygonShape(tmblrId, &tmblrShapeDef, &tmblrGeometry);
+    }
+
+    b2ShapeId shapeIds[size];
+    int count = b2Body_GetShapes(tmblrId, shapeIds, size);
+    B2_ASSERT(count == size);
+    b2Vec2 cmpntPos[size]; 
+
+    for(int i = 0; i < size; i++){
+        cmpntPos[i] = b2Add(tmblrBodyDef.position, b2Shape_GetPolygon(shapeIds[i]).centroid);      
+    }
+
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Tumblr Test");
     SetTargetFPS(60);
-    
+
     while(!WindowShouldClose()){
 
         BeginDrawing();
             ClearBackground(RAYWHITE);
 
             for(int i = 0; i < BALL_COUNT; i++){
-                b2Vec2 bp = b2Body_GetPosition(ballIds[i]);
-                DrawCircleLinesV(b2ToVec2(meterToPixelV(bp)), meterToPixelS(ballGeometry.radius), MAROON);
+                Vector2 pos = b2ToVec2(meterToPixelV(b2Body_GetPosition(ballIds[i])));
+                DrawCircleLinesV(pos, meterToPixelS(ballGeometry.radius), ORANGE);
             }
 
             for(int i = 0; i < size; i++){
-                b2Vec2 pos = b2Add(meterToPixelV(points[i]), (b2Vec2){SCREEN_WIDTH/2.0f, SCREEN_HEIGHT/2.0f});
-                DrawCircleV(b2ToVec2(pos), 1.0f, ORANGE);
+                Vector2 pos = b2ToVec2(meterToPixelV(cmpntPos[i]));
+                Rectangle rec = (Rectangle){pos.x, pos.y, meterToPixelS(cmpntHalfWidth)*2.0f, meterToPixelS(cmpntHalfHeight)*2.0f};
+
+                b2Vec2 cToPDelta = meterToPixelV(b2Sub(tmblrBodyDef.position, cmpntPos[i]));
+                float angle = atan2f(cToPDelta.y, cToPDelta.x);
+                DrawRectanglePro(rec, (Vector2){rec.width/2.0f, rec.height/2.0f}, ((angle + B2_PI/2.0f) * 180/B2_PI), MAROON);
+                DrawLineV(pos, (Vector2){pos.x+10.0f*cosf(angle+B2_PI/2.0f), pos.y+10.0f*sinf(angle+B2_PI/2.0f)}, GREEN);
             }
 
             b2World_Step(worldId, timestep, subStepCount);
         EndDrawing();
     }
-
+    
     CloseWindow();
     b2DestroyWorld(worldId);
-    worldId = b2_nullWorldId;
+    worldId =  b2_nullWorldId;
     return 0; 
 }
