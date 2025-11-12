@@ -71,7 +71,7 @@ int main(void){
     int h = BALL_COUNT / w;
     for(int x = 0; x < w; x++){
         for(int y = 0; y < h; y++){
-            float yp = pixelToMeterS(SCREEN_HEIGHT / 16.055f) + (ballGeometry.radius * y * 2.0f);
+            float yp = pixelToMeterS(SCREEN_HEIGHT / 3.055f) + (ballGeometry.radius * y * 2.0f);
             float xp = pixelToMeterS(SCREEN_WIDTH / 2.055f) + (ballGeometry.radius * x * 2.0f);
             ballBodyDef.position = (b2Vec2){xp, yp};
             int index = (y*w) + x;
@@ -83,38 +83,65 @@ int main(void){
     //-----------Tumblr Creation----------------------
     b2BodyDef tmblrBodyDef = b2DefaultBodyDef();
     tmblrBodyDef.position = pixelToMeterV((b2Vec2){SCREEN_WIDTH/2.0f, SCREEN_HEIGHT/2.0f});
-    tmblrBodyDef.rotation = b2MakeRot(B2_PI/4.0f);
+    tmblrBodyDef.type = b2_kinematicBody;
+    tmblrBodyDef.angularVelocity = B2_PI/2.0f;
     b2BodyId tmblrId = b2CreateBody(worldId, &tmblrBodyDef);
 
+    b2BodyDef tmblrShellBodyDef = b2DefaultBodyDef();
+    tmblrShellBodyDef.position = pixelToMeterV((b2Vec2){SCREEN_WIDTH/2.0f, SCREEN_HEIGHT/2.0f});
+    b2BodyId tmblrShellId = b2CreateBody(worldId, &tmblrShellBodyDef);
+    
     b2Polygon tmblrGeometry = {0};
     b2ShapeDef tmblrShapeDef = b2DefaultShapeDef();
 
-    float cmpntHalfWidth = pixelToMeterS(20.0f)/2.0f;
-    float cmpntHalfHeight = pixelToMeterS(10.0f)/2.0f;
-    float radius = pixelToMeterS(100.0f);
+    float cmpntHalfWidth = pixelToMeterS(5.0f);
+    float cmpntHalfHeight = pixelToMeterS(2.0f);
+    float tmblrRotorRadius = pixelToMeterS(200.0f);
+    float tmblrShellRadius = tmblrRotorRadius+ballGeometry.radius*2.0f;
     float resolution = 0.1f;
     int size = 2.0f / resolution;
 
+    b2Transform tmblrTransform = b2Body_GetTransform(tmblrId);
+
+    b2Vec2 tmblrShellSegments[size];
+
     for(int i = 0; i < size; i++){
         float angle = 1 - (i * resolution);
-        b2Vec2 pos = (b2Vec2){radius*cosf(B2_PI*angle), radius*sinf(B2_PI*angle)};
-        b2Vec2 delta_p = b2Sub(tmblrBodyDef.position, pos);
-        float rot =atan2f(delta_p.y, delta_p.x) + (B2_PI/2.0f);
+        b2Vec2 localPos = (b2Vec2){tmblrRotorRadius*cosf(B2_PI*angle), tmblrRotorRadius*sinf(B2_PI*angle)};
+        b2Vec2 worldPos = b2TransformPoint(tmblrTransform, localPos);
 
-        tmblrGeometry = b2MakeOffsetBox(cmpntHalfWidth, cmpntHalfHeight, pos, b2MakeRot(rot));
+        b2Vec2 delta_p = b2Sub(tmblrTransform.p, worldPos);
+        float rot = atan2f(delta_p.y, delta_p.x) + B2_PI/2.0f;
+
+        tmblrGeometry = b2MakeOffsetBox(cmpntHalfWidth, cmpntHalfHeight, localPos, b2MakeRot(rot));
         tmblrShapeDef.density = 1.0f;
         tmblrShapeDef.material.friction = 0.3f;
         b2CreatePolygonShape(tmblrId, &tmblrShapeDef, &tmblrGeometry);
+
+        tmblrShellSegments[i] = (b2Vec2){tmblrShellRadius*cosf(B2_PI*angle), tmblrShellRadius*sinf(B2_PI*angle)};
     }
+
+    b2ChainDef tmblrShellGeometryDef = b2DefaultChainDef();
+    tmblrShellGeometryDef.points = tmblrShellSegments;
+    tmblrShellGeometryDef.isLoop = true;
+    tmblrShellGeometryDef.count = size;
+    b2CreateChain(tmblrShellId, &tmblrShellGeometryDef);
 
     b2ShapeId shapeIds[size];
     int count = b2Body_GetShapes(tmblrId, shapeIds, size);
     B2_ASSERT(count == size);
     b2Vec2 cmpntPos[size]; 
 
+    b2Transform tmblrShellTransform = b2Body_GetTransform(tmblrShellId);
+    Vector2 tmblrShellSeg[size]; 
+
     for(int i = 0; i < size; i++){
-        cmpntPos[i] = b2Add(tmblrBodyDef.position, b2Shape_GetPolygon(shapeIds[i]).centroid);      
+        cmpntPos[i] =  b2TransformPoint(tmblrTransform, b2Shape_GetPolygon(shapeIds[i]).centroid);
+        tmblrShellSeg[i] = b2ToVec2(meterToPixelV(b2TransformPoint(tmblrShellTransform, tmblrShellSegments[i])));
     }
+
+    float width = meterToPixelS(cmpntHalfWidth);
+    float height = meterToPixelS(cmpntHalfHeight);
 
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Tumblr Test");
     SetTargetFPS(60);
@@ -129,15 +156,24 @@ int main(void){
                 DrawCircleLinesV(pos, meterToPixelS(ballGeometry.radius), ORANGE);
             }
 
-            for(int i = 0; i < size; i++){
-                Vector2 pos = b2ToVec2(meterToPixelV(cmpntPos[i]));
-                Rectangle rec = (Rectangle){pos.x, pos.y, meterToPixelS(cmpntHalfWidth)*2.0f, meterToPixelS(cmpntHalfHeight)*2.0f};
+            float parentAngle = b2Rot_GetAngle(b2Body_GetRotation(tmblrId));
 
-                b2Vec2 cToPDelta = meterToPixelV(b2Sub(tmblrBodyDef.position, cmpntPos[i]));
+            for(int i = 0; i < size; i++){
+                b2Vec2 worldPos = cmpntPos[i];
+
+                b2Vec2 cToPDelta = b2Sub(tmblrTransform.p, worldPos);
                 float angle = atan2f(cToPDelta.y, cToPDelta.x);
-                DrawRectanglePro(rec, (Vector2){rec.width/2.0f, rec.height/2.0f}, ((angle + B2_PI/2.0f) * 180/B2_PI), MAROON);
-                DrawLineV(pos, (Vector2){pos.x+10.0f*cosf(angle+B2_PI/2.0f), pos.y+10.0f*sinf(angle+B2_PI/2.0f)}, GREEN);
+
+                float magnitude = meterToPixelS(b2Length(b2InvTransformPoint(tmblrTransform, worldPos)));
+                Rectangle rec = (Rectangle){SCREEN_WIDTH/2.0f+magnitude*cosf(angle+parentAngle), SCREEN_HEIGHT/2.0f+magnitude*sinf(angle+parentAngle), width*2.0f, height*2.0f};
+
+                DrawRectanglePro(rec, (Vector2){width, height}, (((angle+parentAngle) + B2_PI/2.0f) * RAD2DEG), MAROON);
+
+                DrawLineV((Vector2){SCREEN_WIDTH/2.0f, SCREEN_HEIGHT/2.0f}, (Vector2){SCREEN_WIDTH/2.0f+magnitude*cosf(angle+parentAngle), SCREEN_HEIGHT/2.0f+magnitude*sinf(angle+parentAngle)}, GREEN);
             }
+
+            DrawLineStrip(tmblrShellSeg, size, BLACK);
+            DrawLineV(tmblrShellSeg[0], tmblrShellSeg[size-1], BLACK);
 
             b2World_Step(worldId, timestep, subStepCount);
         EndDrawing();
