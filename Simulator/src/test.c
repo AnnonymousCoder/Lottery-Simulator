@@ -80,6 +80,11 @@ void LotteryBallsCreation(b2WorldId worldId, b2BodyId out[BALL_COUNT]);
 //@return   The newly created rotor's Id.
 b2BodyId TumblrCreation(b2WorldId worldId, Vector2 shellSegments[shellSegSize], b2Vec2 rotorTeeth[rotorTeethSize]);
 
+//Creates a hexagonal shaped[top is left open] Ball Catcher in the center of the Tumblr
+//@param    worldId     Id of the world where the catcher will be created.
+//@param    out         pointer to array that will store the world positions of the catcher vertices.
+b2BodyId BallCatcherCreation(b2WorldId worldId, Vector2 out[6]);
+
 //Draws the Tumblr's Rotor component on screen.
 //@param    rotorAngle      rotation of the rotor in radians.
 //@param    rotorTransform  transform component of the rotor
@@ -104,22 +109,47 @@ int main(void){
     b2Vec2 teeth[rotorTeethSize];
     b2BodyId rotorId = TumblrCreation(worldId, segments, teeth);
 
+    Vector2 catcherCoordinates[6];
+    b2BodyId catcherId = BallCatcherCreation(worldId, catcherCoordinates);
+
     InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Tumblr Test");
     SetTargetFPS(60);
 
     b2Transform rotorTransform = b2Body_GetTransform(rotorId);
+    bool isCatcherEnabled = false;
+    double timeSinceEnable = 0.0;
+    double timeToEnable = 0.0;
 
     while(!WindowShouldClose()){
 
+        if((GetTime() - timeSinceEnable) > 20.0f){
+            if(!isCatcherEnabled){
+                isCatcherEnabled = true;
+                b2Body_Enable(catcherId);
+            }else{
+                isCatcherEnabled = false;
+                b2Body_Disable(catcherId);
+            }
+            timeSinceEnable = GetTime();
+        }
+
+        if((GetTime() - timeSinceEnable) > 20.0f && isCatcherEnabled){
+            isCatcherEnabled = false;
+            b2Body_Disable(catcherId);
+            timeToEnable = GetTime();
+        }
+        
         BeginDrawing();
             ClearBackground(RAYWHITE);
 
-            DrawText(TextFormat("FPS: %d", GetFPS()), 10, 10, 20, MAROON);
+            DrawText(TextFormat("FPS: %d, t(s): %.4lf", GetFPS(), GetTime()), 10, 10, 20, MAROON);
             DrawBalls(ballIds);
             DrawRotor(b2Rot_GetAngle(b2Body_GetRotation(rotorId)), rotorTransform, teeth);
 
             DrawLineStrip(segments, shellSegSize, BLACK);
             DrawLineV(segments[0], segments[shellSegSize-1], BLACK);
+            
+            DrawLineStrip(catcherCoordinates, 6, GREEN);
 
             b2World_Step(worldId, timestep, subStepCount);
         EndDrawing();
@@ -155,6 +185,37 @@ void LotteryBallsCreation(b2WorldId worldId, b2BodyId out[BALL_COUNT]){
             b2CreateCircleShape(out[index], &ballShapeDef, &ballGeometry);
         }
     }
+}
+
+b2BodyId BallCatcherCreation(b2WorldId worldId, Vector2 out[6]){
+    b2Vec2 catcherVertices[6];
+    b2Vec2 catcherCenter = pixelToMeterV((b2Vec2){SCREEN_WIDTH/2.0f, SCREEN_HEIGHT/2.0f});
+    float halfCatcherWidth = ballRadius*2.0f;
+    float halfCatcherHeight = ballRadius*2.0f;
+
+
+    catcherVertices[0] = (b2Vec2){-halfCatcherWidth, -halfCatcherHeight};
+    catcherVertices[1] = (b2Vec2){-halfCatcherWidth-1.0f, 0.0f};
+    catcherVertices[2] = (b2Vec2){-halfCatcherWidth, halfCatcherHeight};
+    catcherVertices[3] = (b2Vec2){halfCatcherWidth, halfCatcherHeight};
+    catcherVertices[4] = (b2Vec2){halfCatcherWidth+1.0f, 0.0f};
+    catcherVertices[5] = (b2Vec2){halfCatcherWidth, -halfCatcherHeight};
+
+    b2BodyDef catcherBodyDef = b2DefaultBodyDef();
+    catcherBodyDef.position = catcherCenter;
+    catcherBodyDef.isEnabled = false;
+    b2BodyId catcherId = b2CreateBody(worldId, &catcherBodyDef);
+
+    b2ChainDef catcherGeometryDef = b2DefaultChainDef();
+    catcherGeometryDef.points = catcherVertices;
+    catcherGeometryDef.count = 6;
+    b2ChainId chainId = b2CreateChain(catcherId, &catcherGeometryDef);
+
+    b2Transform bodyTransform = b2Body_GetTransform(catcherId);
+    for(int i = 0; i < 6; i++){
+        out[i] = b2ToVec2(meterToPixelV(b2TransformPoint(bodyTransform, catcherVertices[i])));
+    }
+    return catcherId;
 }
 
 //Helper function to create rotor teeth for the Tumblr's Rotor component.
